@@ -37,6 +37,10 @@ in
 
         # Project specific dependencies
         wireguard-tools
+        gtk3
+        gcc
+        pkg-config
+        libayatana-appindicator
       ];
 
       shellHook = ''

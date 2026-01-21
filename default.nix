@@ -13,9 +13,19 @@
   buildGoApplication ? pkgs.buildGoApplication,
 }:
 buildGoApplication {
-  pname = "wg-menu-bar";
+  pname = "wg-tray-go";
   version = "0.1.0";
   pwd = ./.;
   src = ./.;
   modules = ./gomod2nix.toml;
+
+  nativeBuildInputs = with pkgs; [
+    gcc
+    pkg-config
+  ];
+
+  buildInputs = with pkgs; [
+    gtk3
+    libayatana-appindicator
+  ];
 }
