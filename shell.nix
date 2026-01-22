@@ -17,31 +17,34 @@
 in
   with pkgs;
     mkShell {
-      packages = [
-        # General dependencies
-        git
+      packages =
+        [
+          # General dependencies
+          git
 
-        # gomod2nix prerequisites
-        goEnv
-        gomod2nix
+          # gomod2nix prerequisites
+          goEnv
+          gomod2nix
 
-        # Go development
-        delve
-        go
-        golangci-lint
-        golangci-lint-langserver
-        gomodifytags
-        gopls
-        gotests
-        impl
+          # Go development
+          delve
+          go
+          golangci-lint
+          golangci-lint-langserver
+          gomodifytags
+          gopls
+          gotests
+          impl
 
-        # Project specific dependencies
-        wireguard-tools
-        gtk3
-        gcc
-        pkg-config
-        libayatana-appindicator
-      ];
+          # Project specific dependencies
+          wireguard-tools
+          gtk3
+          gcc
+          pkg-config
+        ]
+        ++ lib.optional stdenv.isLinux [
+          libayatana-appindicator
+        ];
 
       shellHook = ''
 

@@ -2,111 +2,111 @@ package main
 
 import (
 	_ "embed"
-	"fmt"
+	"log/slog"
+	"os"
+	"os/signal"
+	"strings"
 
+	"github.com/cyrilschreiber3/wg-tray-go/models"
+	"github.com/cyrilschreiber3/wg-tray-go/ui"
+	"github.com/cyrilschreiber3/wg-tray-go/wgutils"
 	"github.com/getlantern/systray"
 )
 
 //go:embed icon.png
 var iconByte []byte
 
-var strayUpAllItem *systray.MenuItem
-var strayRefreshItem *systray.MenuItem
-var strayQuitItem *systray.MenuItem
-
-type TunnelItem struct {
-	Name         string
-	Active       bool
-	TrayMenuItem *systray.MenuItem
-}
-
-var tunnelItems = []TunnelItem{
-	{"Tunnel 1", true, nil},
-	{"Tunnel 2", false, nil},
-}
-
-func toggleTunnelItem(tunnelItemId int) {
-	tunnelItem := tunnelItems[tunnelItemId]
-
-	if tunnelItem.Active {
-		fmt.Printf("%s was on, disabling...", tunnelItem.Name)
-		tunnelItems[tunnelItemId].Active = false
-		tunnelItem.TrayMenuItem.Uncheck()
-	} else {
-		fmt.Printf("%s was off, activating...", tunnelItem.Name)
-		tunnelItems[tunnelItemId].Active = true
-		tunnelItem.TrayMenuItem.Check()
-	}
-}
-
-func listTunnelItems() {
-
-	// getTunnelData()
-
-	for id, tunnel := range tunnelItems {
-		strayTunnelItem := systray.AddMenuItemCheckbox(tunnel.Name, "", tunnel.Active)
-		tunnelItems[id].TrayMenuItem = strayTunnelItem
-
-		go func(item *systray.MenuItem) {
-			for {
-				<-item.ClickedCh
-				fmt.Printf("%s clicked", tunnel.Name)
-				toggleTunnelItem(id)
-			}
-		}(strayTunnelItem)
-	}
-}
-
-func refreshTunnelItems() {
-
-	// updateTunnelData()
-
-	for _, item := range tunnelItems {
-		if item.Active {
-			item.TrayMenuItem.Check()
-		} else {
-			item.TrayMenuItem.Uncheck()
-		}
-	}
-
-}
-
-func listAllItems() {
-	listTunnelItems()
-
-	systray.AddSeparator()
-	strayUpAllItem = systray.AddMenuItem("Up all interfaces", "")
-	systray.AddSeparator()
-	strayRefreshItem = systray.AddMenuItem("Refresh", "Refresh the list of tunnels")
-	strayQuitItem = systray.AddMenuItem("Quit", "Quit wg-menu-bar")
-}
-
-func onReady() {
+func onReady(tunnels *models.TunnelItems) {
 	systray.SetIcon(iconByte)
 
-	listAllItems()
+	trayManager := ui.NewTrayManager(tunnels, handleTunnelToggle, handleUpAll, handleDownAll)
+	trayManager.CreateTunnelItems()
+	trayManager.CreateControlItems()
 
 	for {
 		select {
-		case <-strayUpAllItem.ClickedCh:
-			fmt.Println("Up all clicked")
-			for id, tunnel := range tunnelItems {
-				if !tunnel.Active {
-					toggleTunnelItem(id)
-				}
-			}
+		case <-trayManager.RefreshClicked():
+			slog.Info("Refresh clicked")
+			trayManager.RefreshTunnelItems()
 
-		case <-strayRefreshItem.ClickedCh:
-			fmt.Println("Refresh clicked")
-			refreshTunnelItems()
-
-		case <-strayQuitItem.ClickedCh:
+		case <-trayManager.QuitClicked():
 			systray.Quit()
 			return
 		}
 	}
 }
 
+func handleTunnelToggle(name string, active bool) {
+	slog.Info("Toggling tunnel", slog.String("name", name), slog.Bool("active", active))
+	status := "disabled"
+	if active {
+		status = "enabled"
+		err := wgutils.ActivateWgTunnel(name)
+		if err != nil {
+			slog.Error("Error activating tunnel", slog.String("name", name), slog.Any("error", err))
+		}
+	} else {
+		err := wgutils.DeactivateWgTunnel(name)
+		if err != nil {
+			slog.Error("Error deactivating tunnel", slog.String("name", name), slog.Any("error", err))
+		}
+	}
+	slog.Info("Tunnel toggled", slog.String("name", name), slog.String("status", status))
+}
+
+func handleUpAll(tunnels []string) {
+	slog.Info("Activating all tunnels")
+	for _, tunnel := range tunnels {
+		err := wgutils.ActivateWgTunnel(tunnel)
+		if err != nil {
+			slog.Error("Error activating tunnel", slog.String("name", tunnel), slog.Any("error", err))
+		}
+	}
+}
+
+func handleDownAll(tunnels []string) {
+	slog.Info("Deactivating all tunnels")
+	for _, tunnel := range tunnels {
+		err := wgutils.DeactivateWgTunnel(tunnel)
+		if err != nil {
+			slog.Error("Error deactivating tunnel", slog.String("name", tunnel), slog.Any("error", err))
+		}
+	}
+}
+
+func slogLevelFromEnv() slog.Level {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("LOGLEVEL"))) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
+}
+
 func main() {
-	systray.Run(onReady, nil)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slogLevelFromEnv()}))
+	slog.SetDefault(logger)
+	slog.Info("Starting wg-tray-go")
+
+	tunnels, err := wgutils.GetWgAvailableTunnels()
+	if err != nil {
+		slog.Error("Error getting tunnels", slog.Any("error", err))
+		return
+	}
+
+	systray.Run(func() { onReady(tunnels) }, nil)
+}
+
+func init() {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	go func() {
+		<-c
+		slog.Info("Received interrupt signal, quitting...")
+		systray.Quit()
+	}()
 }

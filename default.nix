@@ -19,13 +19,20 @@ buildGoApplication {
   src = ./.;
   modules = ./gomod2nix.toml;
 
-  nativeBuildInputs = with pkgs; [
-    gcc
-    pkg-config
-  ];
+  # subPackages = ["models" "wgutils" "ui"];
 
-  buildInputs = with pkgs; [
-    gtk3
-    libayatana-appindicator
-  ];
+  nativeBuildInputs = with pkgs;
+    lib.optional pkgs.stdenv.isLinux [
+      gcc
+      pkg-config
+    ];
+
+  buildInputs = with pkgs;
+    [
+      wireguard-tools
+    ]
+    ++ lib.optional pkgs.stdenv.isLinux [
+      gtk3
+      libayatana-appindicator
+    ];
 }

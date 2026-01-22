@@ -1,4 +1,4 @@
-module github.com/cyrilschreiber3/wg-menu-bar
+module github.com/cyrilschreiber3/wg-tray-go
 
 go 1.25.4
 
