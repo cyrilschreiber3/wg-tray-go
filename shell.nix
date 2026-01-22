@@ -16,7 +16,7 @@
   goEnv = mkGoEnv {pwd = ./.;};
 in
   with pkgs;
-    mkShell {
+    mkShell rec {
       packages =
         [
           # General dependencies
@@ -42,11 +42,17 @@ in
           gcc
           pkg-config
         ]
-        ++ lib.optional stdenv.isLinux [
+        ++ (lib.optional stdenv.isLinux [
           libayatana-appindicator
-        ];
+        ]);
+
+      buildInputs = with pkgs; (lib.optional stdenv.isLinux [
+        libayatana-appindicator
+      ]);
 
       shellHook = ''
+
+        export LD_LIBRARY_PATH=${lib.makeLibraryPath [stdenv.cc.cc]}
 
         echo -e "Welcome to the Go dev environment!\n"
 

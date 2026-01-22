@@ -21,18 +21,19 @@ buildGoApplication {
 
   # subPackages = ["models" "wgutils" "ui"];
 
-  nativeBuildInputs = with pkgs;
-    lib.optional pkgs.stdenv.isLinux [
-      gcc
-      pkg-config
-    ];
+  nativeBuildInputs = with pkgs; (lib.optional pkgs.stdenv.isLinux [
+    gcc
+    pkg-config
+  ]);
 
   buildInputs = with pkgs;
     [
       wireguard-tools
     ]
-    ++ lib.optional pkgs.stdenv.isLinux [
-      gtk3
-      libayatana-appindicator
-    ];
+    ++ (
+      lib.optionals pkgs.stdenv.isLinux [
+        libayatana-appindicator
+        gtk3
+      ]
+    );
 }
