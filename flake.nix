@@ -12,17 +12,23 @@
     nixpkgs,
     flake-utils,
     gomod2nix,
-  }: (
-    flake-utils.lib.eachDefaultSystem
-    (system: let
-      pkgs = nixpkgs.legacyPackages.${system};
-    in {
-      packages.default = pkgs.callPackage ./. {
-        inherit (gomod2nix.legacyPackages.${system}) buildGoApplication;
+  }:
+    {
+      homeManagerModules = {
+        default = import ./hm-module.nix;
       };
-      devShells.default = pkgs.callPackage ./shell.nix {
-        inherit (gomod2nix.legacyPackages.${system}) mkGoEnv gomod2nix;
-      };
-    })
-  );
+    }
+    // (
+      flake-utils.lib.eachDefaultSystem
+      (system: let
+        pkgs = nixpkgs.legacyPackages.${system};
+      in {
+        packages.default = pkgs.callPackage ./. {
+          inherit (gomod2nix.legacyPackages.${system}) buildGoApplication;
+        };
+        devShells.default = pkgs.callPackage ./shell.nix {
+          inherit (gomod2nix.legacyPackages.${system}) mkGoEnv gomod2nix;
+        };
+      })
+    );
 }

@@ -19,7 +19,17 @@ buildGoApplication {
   src = ./.;
   modules = ./gomod2nix.toml;
 
-  # subPackages = ["models" "wgutils" "ui"];
+  desktopItems = [
+    (makeDesktopItem {
+      name = "wg-tray-go";
+      desktopName = "wg-tray-go";
+      exec = "wg-tray-go %U";
+      icon = "wg-tray-go";
+      comment = "System tray application for managing WireGuard tunnels";
+      categories = ["Network" "Utility"];
+      startupWMClass = "wg-tray-go";
+    })
+  ];
 
   nativeBuildInputs = with pkgs; (lib.optional pkgs.stdenv.isLinux [
     gcc
@@ -37,3 +47,5 @@ buildGoApplication {
       ]
     );
 }
+# TODO: create .app bundle for macOS
+

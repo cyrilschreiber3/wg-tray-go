@@ -18,37 +18,36 @@ in
   with pkgs;
     mkShell rec {
       packages =
+        lib.flatten
         [
-          # General dependencies
-          git
+          [
+            # General dependencies
+            git
 
-          # gomod2nix prerequisites
-          goEnv
-          gomod2nix
+            # gomod2nix prerequisites
+            goEnv
+            gomod2nix
 
-          # Go development
-          delve
-          go
-          golangci-lint
-          golangci-lint-langserver
-          gomodifytags
-          gopls
-          gotests
-          impl
+            # Go development
+            delve
+            go
+            golangci-lint
+            golangci-lint-langserver
+            gomodifytags
+            gopls
+            gotests
+            impl
 
-          # Project specific dependencies
-          wireguard-tools
-          gtk3
-          gcc
-          pkg-config
-        ]
-        ++ (lib.optional stdenv.isLinux [
-          libayatana-appindicator
-        ]);
-
-      buildInputs = with pkgs; (lib.optional stdenv.isLinux [
-        libayatana-appindicator
-      ]);
+            # Project specific dependencies
+            wireguard-tools
+            gtk3
+            gcc
+            pkg-config
+          ]
+          (lib.optional stdenv.isLinux [
+            libayatana-appindicator
+          ])
+        ];
 
       shellHook = ''
 
