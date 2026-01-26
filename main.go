@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"strings"
 
+	"github.com/cyrilschreiber3/wg-tray-go/config"
 	"github.com/cyrilschreiber3/wg-tray-go/models"
 	"github.com/cyrilschreiber3/wg-tray-go/ui"
 	"github.com/cyrilschreiber3/wg-tray-go/wgutils"
@@ -16,10 +17,10 @@ import (
 //go:embed icon.png
 var iconByte []byte
 
-func onReady(tunnels *models.TunnelItems) {
+func onReady(appConfig *config.AppConfig, tunnels *models.TunnelItems) {
 	systray.SetIcon(iconByte)
 
-	trayManager := ui.NewTrayManager(tunnels, handleTunnelToggle, handleUpAll, handleDownAll)
+	trayManager := ui.NewTrayManager(appConfig, tunnels, handleTunnelToggle, handleUpAll, handleDownAll)
 	trayManager.CreateTunnelItems()
 	trayManager.CreateControlItems()
 
@@ -92,13 +93,18 @@ func main() {
 	slog.SetDefault(logger)
 	slog.Info("Starting wg-tray-go")
 
-	tunnels, err := wgutils.GetWgAvailableTunnels()
+	appConfig, err := config.LoadAppConfig()
 	if err != nil {
-		slog.Error("Error getting tunnels", slog.Any("error", err))
+		slog.Error("Error loading app config", slog.Any("error", err))
 		return
 	}
 
-	systray.Run(func() { onReady(tunnels) }, nil)
+	tunnels, err := appConfig.ToTunnelItems()
+	if err != nil {
+		slog.Error("Error converting config to tunnel items", slog.Any("error", err))
+		return
+	}
+	systray.Run(func() { onReady(appConfig, tunnels) }, nil)
 }
 
 func init() {
@@ -110,3 +116,5 @@ func init() {
 		systray.Quit()
 	}()
 }
+
+// TODO: check /etc/wireguard with sudo

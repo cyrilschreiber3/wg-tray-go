@@ -1,5 +1,11 @@
 package models
 
+type TunnelGroup struct {
+	Name         string   `json:"name"`
+	PickRandomly bool     `json:"pick_randomly,omitempty"`
+	TunnelNames  []string `json:"tunnel_names"`
+}
+
 type TunnelItem struct {
 	Name   string
 	Active bool
@@ -50,6 +56,17 @@ func (t *TunnelItems) GetActiveTunnelNames() []string {
 	return activeTunnels
 }
 
+func (t *TunnelItems) GetActiveTunnelNamesInGroup(group TunnelGroup) []string {
+	activeTunnels := []string{}
+	for _, tunnelName := range group.TunnelNames {
+		tunnel := t.GetByName(tunnelName)
+		if tunnel != nil && tunnel.Active {
+			activeTunnels = append(activeTunnels, tunnel.Name)
+		}
+	}
+	return activeTunnels
+}
+
 func (t *TunnelItems) GetInactiveTunnelNames() []string {
 	inactiveTunnels := []string{}
 	for i := range *t {
@@ -60,5 +77,13 @@ func (t *TunnelItems) GetInactiveTunnelNames() []string {
 	return inactiveTunnels
 }
 
-func (t *TunnelItems) RefreshTrayItems() {
+func (t *TunnelItems) GetInactiveTunnelNamesInGroup(group TunnelGroup) []string {
+	inactiveTunnels := []string{}
+	for _, tunnelName := range group.TunnelNames {
+		tunnel := t.GetByName(tunnelName)
+		if tunnel != nil && !tunnel.Active {
+			inactiveTunnels = append(inactiveTunnels, tunnel.Name)
+		}
+	}
+	return inactiveTunnels
 }
