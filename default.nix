@@ -11,6 +11,7 @@
       }
   ),
   buildGoApplication ? pkgs.buildGoApplication,
+  makeDesktopItem ? pkgs.makeDesktopItem,
 }:
 buildGoApplication {
   pname = "wg-tray-go";
@@ -31,9 +32,10 @@ buildGoApplication {
     })
   ];
 
-  nativeBuildInputs = with pkgs; (lib.optional pkgs.stdenv.isLinux [
+  nativeBuildInputs = with pkgs; (lib.optionals stdenv.isLinux [
     gcc
     pkg-config
+    copyDesktopItems
   ]);
 
   buildInputs = with pkgs;
@@ -41,11 +43,18 @@ buildGoApplication {
       wireguard-tools
     ]
     ++ (
-      lib.optionals pkgs.stdenv.isLinux [
+      lib.optionals stdenv.isLinux [
         libayatana-appindicator
         gtk3
       ]
     );
+
+  postInstall = pkgs.lib.optionalString pkgs.stdenv.isLinux ''
+    mkdir -p $out/share/icons/hicolor/48x48/apps
+    mkdir -p $out/share/icons/hicolor/scalable/apps
+    cp ${./assets/icon.png} $out/share/icons/hicolor/48x48/apps/wg-tray-go.png
+    cp ${./assets/icon.svg} $out/share/icons/hicolor/scalable/apps/wg-tray-go.svg
+  '';
 }
 # TODO: create .app bundle for macOS
 
