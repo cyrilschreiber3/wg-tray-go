@@ -18,6 +18,7 @@ type TrayManager struct {
 	groupMenus      map[string]*systray.MenuItem
 	upAllItem       *systray.MenuItem
 	downAllItem     *systray.MenuItem
+	upAllGroupsItem *systray.MenuItem
 	refreshItem     *systray.MenuItem
 	quitItem        *systray.MenuItem
 	onTunnelToggle  func(string, bool)
@@ -99,28 +100,30 @@ func (tm *TrayManager) handleTunnelClick(menuItem *systray.MenuItem, tunnel *mod
 
 func (tm *TrayManager) handleGroupUp(group models.TunnelGroup, upGroupItem *systray.MenuItem) {
 	for range upGroupItem.ClickedCh {
-		if group.PickRandomly {
-			tm.RefreshTunnelItems()
-			activeTunnels := tm.tunnels.GetActiveTunnelNamesInGroup(group)
-			if len(activeTunnels) > 0 {
-				slog.Warn("At least one tunnel in the group is already active; skipping random selection", slog.String("group", group.Name))
-				continue
-			}
+		tm.RefreshTunnelItems()
+		tm.activateGroup(group)
+		tm.RefreshTunnelItems()
+	}
+}
 
-			tunnelIndex := rand.Intn(len(group.TunnelNames))
-			selectedTunnel := group.TunnelNames[tunnelIndex]
-			slog.Info("Randomly selected tunnel to activate", slog.String("group", group.Name), slog.String("tunnel", selectedTunnel))
-			if tm.onTunnelToggle != nil {
-				tm.onTunnelToggle(selectedTunnel, true)
-				tm.RefreshTunnelItems()
-			}
+func (tm *TrayManager) activateGroup(group models.TunnelGroup) {
+	if group.PickRandomly {
+		activeTunnels := tm.tunnels.GetActiveTunnelNamesInGroup(group)
+		if len(activeTunnels) > 0 {
+			slog.Warn("At least one tunnel in the group is already active; skipping random selection", slog.String("group", group.Name))
+			return
+		}
 
-		} else {
-			tm.RefreshTunnelItems()
-			if tm.onUpAll != nil {
-				tm.onUpAll(group.TunnelNames)
-			}
-			tm.RefreshTunnelItems()
+		tunnelIndex := rand.Intn(len(group.TunnelNames))
+		selectedTunnel := group.TunnelNames[tunnelIndex]
+		slog.Info("Randomly selected tunnel to activate", slog.String("group", group.Name), slog.String("tunnel", selectedTunnel))
+		if tm.onTunnelToggle != nil {
+			tm.onTunnelToggle(selectedTunnel, true)
+		}
+
+	} else {
+		if tm.onUpAll != nil {
+			tm.onUpAll(group.TunnelNames)
 		}
 	}
 }
@@ -154,6 +157,19 @@ func (tm *TrayManager) RefreshTunnelItems() {
 
 func (tm *TrayManager) CreateControlItems() {
 	systray.AddSeparator()
+	if tm.appConfig.HasGroups() {
+		tm.upAllGroupsItem = systray.AddMenuItem("Up all groups", "")
+		go func() {
+			for range tm.upAllGroupsItem.ClickedCh {
+				slog.Info("Activating all groups")
+				tm.RefreshTunnelItems()
+				for _, group := range tm.appConfig.TunnelGroups {
+					tm.activateGroup(group)
+				}
+				tm.RefreshTunnelItems()
+			}
+		}()
+	}
 	tm.upAllItem = systray.AddMenuItem("Up all interfaces", "")
 	tm.downAllItem = systray.AddMenuItem("Down all interfaces", "")
 	systray.AddSeparator()

@@ -17,6 +17,10 @@ func IsWgTunnelActive(tunnelName string) bool {
 	slog.Debug("wg show output", slog.String("output", string(output)))
 	if err != nil {
 		errorString := parseErrorFromWg(string(output))
+		if errorString.Error() == "interface not found" {
+			slog.Debug("Could not find interface, assuming inactive", slog.String("interface", interfaceName))
+			return false
+		}
 		slog.Error("Error checking tunnel status", slog.String("interface", interfaceName), slog.Any("error", errorString))
 		return false
 	}

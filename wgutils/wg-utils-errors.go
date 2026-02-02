@@ -6,7 +6,7 @@ import (
 )
 
 func parseErrorFromWg(wgOutput string) error {
-	if strings.Contains(wgOutput, "Unable to access interface: No such file or directory") {
+	if strings.Contains(wgOutput, "Unable to access interface: No such file or directory") || strings.Contains(wgOutput, "Unable to access interface: No such device") {
 		return fmt.Errorf("interface not found")
 	}
 
