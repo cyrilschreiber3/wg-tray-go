@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"strings"
 
+	"github.com/cyrilschreiber3/wg-tray-go/assets"
 	"github.com/cyrilschreiber3/wg-tray-go/config"
 	"github.com/cyrilschreiber3/wg-tray-go/models"
 	"github.com/cyrilschreiber3/wg-tray-go/ui"
@@ -14,11 +15,8 @@ import (
 	"github.com/getlantern/systray"
 )
 
-//go:embed icon.png
-var iconByte []byte
-
 func onReady(appConfig *config.AppConfig, tunnels *models.TunnelItems) {
-	systray.SetIcon(iconByte)
+	systray.SetIcon(assets.IconByte)
 
 	trayManager := ui.NewTrayManager(appConfig, tunnels, handleTunnelToggle, handleUpAll, handleDownAll)
 	trayManager.CreateTunnelItems()
