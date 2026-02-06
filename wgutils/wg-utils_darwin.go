@@ -1,23 +1,18 @@
 package wgutils
 
 import (
-	"log/slog"
-	"os"
+	"os/exec"
 	"strings"
 )
 
 var wgRuntimeDir = "/var/run/wireguard/"
 
 func getInterfaceName(tunnelName string) (string, error) {
-	interfaceName, err := os.ReadFile(wgRuntimeDir + tunnelName + ".name")
+	output, err := exec.Command("sudo", "cat", wgRuntimeDir+tunnelName+".name").Output()
 	if err != nil {
-		if os.IsNotExist(err) {
-			return "", err
-		}
-		slog.Error("Error reading interface name file", slog.Any("error", err))
 		return "", err
 	}
 
-	interfaceNameStr := strings.TrimSpace(string(interfaceName))
+	interfaceNameStr := strings.TrimSpace(string(output))
 	return interfaceNameStr, nil
 }

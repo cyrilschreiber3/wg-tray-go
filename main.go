@@ -114,5 +114,3 @@ func init() {
 		systray.Quit()
 	}()
 }
-
-// TODO: check /etc/wireguard with sudo

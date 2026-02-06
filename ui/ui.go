@@ -76,7 +76,6 @@ func (tm *TrayManager) CreateTunnelItems() {
 			if group.PickRandomly {
 				upGroupText = "Up random in group"
 			}
-			systray.AddSeparator()
 			upGroupItem := groupMenu.AddSubMenuItem(upGroupText, "")
 			downGroupItem := groupMenu.AddSubMenuItem("Down all in group", "")
 
