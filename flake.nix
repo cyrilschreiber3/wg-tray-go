@@ -29,12 +29,13 @@
       flake-utils.lib.eachDefaultSystem
       (system: let
         pkgs = nixpkgs.legacyPackages.${system};
+        wg-tray-go = pkgs.callPackage ./. {
+          inherit (gomod2nix.legacyPackages.${system}) buildGoApplication;
+        };
       in {
         packages = {
-          wg-tray-go = pkgs.callPackage ./. {
-            inherit (gomod2nix.legacyPackages.${system}) buildGoApplication;
-          };
-          default = self.packages.wg-tray-go;
+          inherit wg-tray-go;
+          default = wg-tray-go;
         };
         devShells.default = pkgs.callPackage ./shell.nix {
           inherit (gomod2nix.legacyPackages.${system}) mkGoEnv gomod2nix;
