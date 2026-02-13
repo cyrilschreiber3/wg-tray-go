@@ -15,7 +15,14 @@
   }:
     {
       homeManagerModules = {
-        default = import ./hm-module.nix;
+        wg-tray-go = import ./hm-module.nix;
+        default = self.homeManagerModules.wg-tray-go;
+      };
+
+      overlays.default = final: prev: {
+        wg-tray-go = final.callPackage ./. {
+          inherit (gomod2nix.legacyPackages.${final.system}) buildGoApplication;
+        };
       };
     }
     // (
@@ -23,8 +30,11 @@
       (system: let
         pkgs = nixpkgs.legacyPackages.${system};
       in {
-        packages.default = pkgs.callPackage ./. {
-          inherit (gomod2nix.legacyPackages.${system}) buildGoApplication;
+        packages = {
+          wg-tray-go = pkgs.callPackage ./. {
+            inherit (gomod2nix.legacyPackages.${system}) buildGoApplication;
+          };
+          default = self.packages.wg-tray-go;
         };
         devShells.default = pkgs.callPackage ./shell.nix {
           inherit (gomod2nix.legacyPackages.${system}) mkGoEnv gomod2nix;
