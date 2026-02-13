@@ -17,25 +17,43 @@ in {
     package = mkOption {
       type = types.package;
       default = pkgs.wg-tray-go;
-      defaultText = literalExpression "pkgs.bar-sika";
+      defaultText = literalExpression "pkgs.wg-tray-go";
       description = "The wg-tray-go package to use.";
     };
 
     settings = mkOption {
-      type = types.submodule {
-        tunnelNames = types.listOf types.str;
-        tunnelGroups = types.listOf (
-          types.submodule {
-            name = types.str;
-            pickRandomly = mkOption {
-              type = types.bool;
-              default = false;
-              description = "Whether to pick a random tunnel from this group when bringing the group up.";
-            };
-            tunnelNames = types.listOf types.str;
-          }
-        );
-      };
+      type = types.nullOr (types.submodule {
+        options = {
+          tunnelNames = mkOption {
+            type = types.listOf types.str;
+            default = [];
+            description = "List of tunnel names to show in the tray.";
+          };
+          tunnelGroups = mkOption {
+            type = types.listOf (
+              types.submodule {
+                options = {
+                  name = mkOption {
+                    type = types.str;
+                    description = "Name of the tunnel group.";
+                  };
+                  pickRandomly = mkOption {
+                    type = types.bool;
+                    default = false;
+                    description = "Whether to pick a random tunnel from this group when bringing the group up.";
+                  };
+                  tunnelNames = mkOption {
+                    type = types.listOf types.str;
+                    description = "List of tunnel names in this group.";
+                  };
+                };
+              }
+            );
+            default = [];
+            description = "List of tunnel groups.";
+          };
+        };
+      });
       default = null;
       example = {
         tunnelNames = ["wg0" "wg1" "wg2"];
@@ -57,19 +75,19 @@ in {
   };
 
   config = mkIf cfg.enable {
-    xdg.configFiles."wg-tray-go/config.json".text =
-      lib.mkIf cfg.settings
-      != null (
-        builtins.toJSON {
-          tunnel_names = cfg.settings.tunnelNames;
-          tunnel_groups =
-            map (group: {
-              name = group.name;
-              pick_randomly = group.pickRandomly;
-              tunnel_names = group.tunnelNames;
-            })
-            cfg.settings.tunnelGroups;
-        }
-      );
+    home.packages = [cfg.package];
+
+    xdg.configFile."wg-tray-go/config.json" = lib.mkIf (cfg.settings != null) {
+      text = builtins.toJSON {
+        tunnel_names = cfg.settings.tunnelNames;
+        tunnel_groups =
+          map (group: {
+            name = group.name;
+            pick_randomly = group.pickRandomly;
+            tunnel_names = group.tunnelNames;
+          })
+          cfg.settings.tunnelGroups;
+      };
+    };
   };
 }
