@@ -16,7 +16,7 @@
 buildGoApplication rec {
   prettyPname = "WG Tray Go";
   pname = "wg-tray-go";
-  version = "1.0.0";
+  version = "1.1.0";
   pwd = ./.;
   src = ./.;
   modules = ./gomod2nix.toml;
@@ -33,11 +33,15 @@ buildGoApplication rec {
     })
   ];
 
-  nativeBuildInputs = with pkgs; (lib.optionals stdenv.isLinux [
-    gcc
-    pkg-config
-    copyDesktopItems
-  ]);
+  nativeBuildInputs = with pkgs;
+    [
+      makeWrapper
+    ]
+    ++ (lib.optionals stdenv.isLinux [
+      gcc
+      pkg-config
+      copyDesktopItems
+    ]);
 
   buildInputs = with pkgs;
     [
@@ -49,6 +53,12 @@ buildGoApplication rec {
         gtk3
       ]
     );
+
+  postPatch = ''
+    substituteInPlace wgutils/wg-utils.go \
+      --replace-warn '"wg-quick"' '"${pkgs.wireguard-tools}/bin/wg-quick"' \
+      --replace-warn '"wg"' '"${pkgs.wireguard-tools}/bin/wg"'
+  '';
 
   postInstall = pkgs.lib.concatStringsSep "\n" [
     (pkgs.lib.optionalString pkgs.stdenv.isLinux ''

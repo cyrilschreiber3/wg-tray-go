@@ -5,10 +5,10 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"strings"
 
 	"github.com/cyrilschreiber3/wg-tray-go/assets"
 	"github.com/cyrilschreiber3/wg-tray-go/config"
+	"github.com/cyrilschreiber3/wg-tray-go/logger"
 	"github.com/cyrilschreiber3/wg-tray-go/models"
 	"github.com/cyrilschreiber3/wg-tray-go/ui"
 	"github.com/cyrilschreiber3/wg-tray-go/wgutils"
@@ -73,21 +73,8 @@ func handleDownAll(tunnels []string) {
 	}
 }
 
-func slogLevelFromEnv() slog.Level {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("LOGLEVEL"))) {
-	case "debug":
-		return slog.LevelDebug
-	case "warn", "warning":
-		return slog.LevelWarn
-	case "error":
-		return slog.LevelError
-	default:
-		return slog.LevelInfo
-	}
-}
-
 func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slogLevelFromEnv()}))
+	logger := logger.InitLogger()
 	slog.SetDefault(logger)
 	slog.Info("Starting wg-tray-go")
 
