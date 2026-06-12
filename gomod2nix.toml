@@ -1,6 +1,15 @@
 schema = 3
 
 [mod]
+  [mod."git.sr.ht/~jackmordaunt/go-toast"]
+    version = "v1.1.2"
+    hash = "sha256-xNlul602ezXiEiRP67VEECk2a4kW1n9aHWqa+8UKT4k="
+  [mod."github.com/esiqveland/notify"]
+    version = "v0.13.3"
+    hash = "sha256-y+WqZAtCEZacAaqxdEEE+8gh2xhiPMpwM7IUmpE6og0="
+  [mod."github.com/gen2brain/beeep"]
+    version = "v0.11.2"
+    hash = "sha256-vP7oVTIHLx6LIUH7lpQjYyeOOJb6DeRkGykHkv7Vbks="
   [mod."github.com/getlantern/context"]
     version = "v0.0.0-20190109183933-c447772a6520"
     hash = "sha256-T4v8t2Hg7lT5d69hD7189WN+dPeMxWXY3vfyiW+oQSM="
@@ -22,12 +31,33 @@ schema = 3
   [mod."github.com/getlantern/systray"]
     version = "v1.2.2"
     hash = "sha256-GEflgBfashORmopz8kxD7R3GRMKyF7bGE2DXr0w5nX0="
+  [mod."github.com/go-ole/go-ole"]
+    version = "v1.3.0"
+    hash = "sha256-tF8t3VcV71jQ4jbPL91BwR59AKDpUAFV1waIKzkXJu8="
   [mod."github.com/go-stack/stack"]
     version = "v1.8.0"
     hash = "sha256-26RlTEcAkbewMUtmirKrDGQ1WJlNousp69v7HMopYnI="
+  [mod."github.com/godbus/dbus/v5"]
+    version = "v5.2.2"
+    hash = "sha256-j+LicPlXcB1R3oVFPa8cd4yVJLpBx+ca5gXmHqOJSN8="
+  [mod."github.com/jackmordaunt/icns/v3"]
+    version = "v3.0.1"
+    hash = "sha256-BBS5+lIOPn3HVBr4S15YYgvffQxy24BAOAQml4CJ2s4="
+  [mod."github.com/nfnt/resize"]
+    version = "v0.0.0-20180221191011-83c6a9932646"
+    hash = "sha256-yvPV+HlDOyJsiwAcVHQkmtw8DHSXyw+cXHkigXm8rAA="
   [mod."github.com/oxtoacart/bpool"]
     version = "v0.0.0-20190530202638-03653db5a59c"
     hash = "sha256-Jaw3QTrj05MwADtv7lSjwMACp8s2Z/ratmxPw0t9LbM="
+  [mod."github.com/sergeymakinen/go-bmp"]
+    version = "v1.0.0"
+    hash = "sha256-8ADMMD2M+h264VGwMxBcIBfpou/2zysdo+xtWXHf9C0="
+  [mod."github.com/sergeymakinen/go-ico"]
+    version = "v1.0.0"
+    hash = "sha256-ljOz3cREtFSoqdVtfPo2tgk25QA90Bfn/iHJYKF9roQ="
+  [mod."github.com/tadvi/systray"]
+    version = "v0.0.0-20190226123456-11a2b8fa57af"
+    hash = "sha256-o0Z+nrd8l5A/CjJAW7lq5cpjdbaihfqiu5laLnSjJS8="
   [mod."golang.org/x/sys"]
-    version = "v0.1.0"
-    hash = "sha256-nZbEJ/2PuWrDLD4ujeVvcFGoIsfVoIH/Lcp4FjD7hpU="
+    version = "v0.46.0"
+    hash = "sha256-NzRXMSEk6upeudJvUEPVnw6clJ3d8UdC/vdfANWAc8g="
