@@ -24,6 +24,11 @@ in {
     settings = mkOption {
       type = types.nullOr (types.submodule {
         options = {
+          enableNotifications = mkOption {
+            type = types.bool;
+            default = true;
+            description = "Enable notifications for wg-tray-go.";
+          };
           tunnelNames = mkOption {
             type = types.listOf types.str;
             default = [];
@@ -79,6 +84,7 @@ in {
 
     xdg.configFile."wg-tray-go/config.json" = lib.mkIf (cfg.settings != null) {
       text = builtins.toJSON {
+        enable_notifications = cfg.settings.enableNotifications;
         tunnel_names = cfg.settings.tunnelNames;
         tunnel_groups =
           map (group: {

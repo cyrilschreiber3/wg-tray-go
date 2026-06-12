@@ -14,14 +14,16 @@ import (
 var wgConfigPath = "/etc/wireguard/"
 
 type AppConfig struct {
-	TunnelNames  []string             `json:"tunnel_names"`
-	TunnelGroups []models.TunnelGroup `json:"tunnel_groups"`
+	EnableNotification bool                 `json:"enable_notifications"`
+	TunnelNames        []string             `json:"tunnel_names"`
+	TunnelGroups       []models.TunnelGroup `json:"tunnel_groups"`
 }
 
 func NewAppConfig() *AppConfig {
 	return &AppConfig{
-		TunnelNames:  []string{},
-		TunnelGroups: []models.TunnelGroup{},
+		EnableNotification: true,
+		TunnelNames:        []string{},
+		TunnelGroups:       []models.TunnelGroup{},
 	}
 }
 

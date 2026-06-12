@@ -1,10 +1,12 @@
 package wgutils
 
 import (
+	"fmt"
 	"log/slog"
 	"os/exec"
 
 	"github.com/cyrilschreiber3/wg-tray-go/models"
+	"github.com/cyrilschreiber3/wg-tray-go/notifications"
 )
 
 func IsWgTunnelActive(tunnelName string) bool {
@@ -35,6 +37,7 @@ func ActivateWgTunnel(tunnelName string) error {
 		errorString := parseErrorFromWgQuick(string(output))
 		return errorString
 	}
+	notifications.Notify("Wg", fmt.Sprintf("Tunnel %s activated", tunnelName))
 	return nil
 }
 
@@ -45,6 +48,7 @@ func DeactivateWgTunnel(tunnelName string) error {
 		errorString := parseErrorFromWgQuick(string(output))
 		return errorString
 	}
+	notifications.Notify("Wg", fmt.Sprintf("Tunnel %s deactivated", tunnelName))
 	return nil
 }
 

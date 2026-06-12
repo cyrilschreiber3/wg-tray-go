@@ -10,6 +10,7 @@ import (
 	"github.com/cyrilschreiber3/wg-tray-go/config"
 	"github.com/cyrilschreiber3/wg-tray-go/logger"
 	"github.com/cyrilschreiber3/wg-tray-go/models"
+	"github.com/cyrilschreiber3/wg-tray-go/notifications"
 	"github.com/cyrilschreiber3/wg-tray-go/ui"
 	"github.com/cyrilschreiber3/wg-tray-go/wgutils"
 	"github.com/getlantern/systray"
@@ -89,6 +90,7 @@ func main() {
 		slog.Error("Error converting config to tunnel items", slog.Any("error", err))
 		return
 	}
+	notifications.InitNotifications(appConfig.EnableNotification)
 	systray.Run(func() { onReady(appConfig, tunnels) }, nil)
 }
 
