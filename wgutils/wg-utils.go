@@ -37,7 +37,7 @@ func ActivateWgTunnel(tunnelName string) error {
 		errorString := parseErrorFromWgQuick(string(output))
 		return errorString
 	}
-	notifications.Notify("Wg", fmt.Sprintf("Tunnel %s activated", tunnelName))
+	notifications.Notify("Wg Tray Go", fmt.Sprintf("Tunnel %s activated", tunnelName))
 	return nil
 }
 
@@ -48,7 +48,7 @@ func DeactivateWgTunnel(tunnelName string) error {
 		errorString := parseErrorFromWgQuick(string(output))
 		return errorString
 	}
-	notifications.Notify("Wg", fmt.Sprintf("Tunnel %s deactivated", tunnelName))
+	notifications.Notify("Wg Tray Go", fmt.Sprintf("Tunnel %s deactivated", tunnelName))
 	return nil
 }
 

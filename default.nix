@@ -16,7 +16,7 @@
 buildGoApplication rec {
   prettyPname = "WG Tray Go";
   pname = "wg-tray-go";
-  version = "1.2.0";
+  version = "1.2.1";
   pwd = ./.;
   src = ./.;
   modules = ./gomod2nix.toml;
