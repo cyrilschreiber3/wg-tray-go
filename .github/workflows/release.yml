@@ -47,14 +47,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: GoReleaser (inside goreleaser-cross)
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          version: latest
-          distribution: goreleaser
-          args: release --clean
+      - name: Build with goreleaser-cross (manual docker run)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          docker run --rm --privileged \
+            -e GITHUB_TOKEN \
+            -e CGO_ENABLED=1 \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$PWD":/go/src/github.com/cyrilschreiber3/wg-tray-go \
+            -w /go/src/github.com/cyrilschreiber3/wg-tray-go \
+            ghcr.io/goreleaser/goreleaser-cross:latest \
+            release --clean
 
   package-macos:
     name: Package macOS DMG (nix bundle + goreleaser binary)

@@ -46,9 +46,9 @@ builds:
 
 archives:
   - id: default
-    format: tar.gz
+    formats: tar.gz
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    builds:
+    ids:
       - linux-amd64
       - linux-arm64
       - darwin-amd64
