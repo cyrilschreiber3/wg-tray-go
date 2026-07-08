@@ -156,7 +156,7 @@ jobs:
 
       - name: Codesign app bundle
         env:
-          APP_SIGN_IDENTITY: "Developer ID Application"
+          APP_SIGN_IDENTITY: ${{ secrets.APP_SIGN_IDENTITY }}
         run: |
           set -euo pipefail
           codesign --force --deep --options runtime --timestamp --sign "$APP_SIGN_IDENTITY" "$APP_BUNDLE_STAGE"
@@ -188,7 +188,7 @@ jobs:
 
       - name: Codesign DMG
         env:
-          APP_SIGN_IDENTITY: "Developer ID Application: Cyril Schreiber (8WJWU6NY7L)"
+          APP_SIGN_IDENTITY: ${{ secrets.APP_SIGN_IDENTITY }}
         run: |
           set -euo pipefail
           codesign --force --timestamp --sign "$APP_SIGN_IDENTITY" "$DMG_PATH"
