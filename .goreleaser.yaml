@@ -22,13 +22,6 @@ builds:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
 
   - <<: *build_base
-    id: linux-arm64
-    goarch: [arm64]
-    env:
-      - CGO_ENABLED=1
-      - CC=aarch64-linux-gnu-gcc
-
-  - <<: *build_base
     id: darwin-amd64
     goos: [darwin]
     goarch: [amd64]
@@ -50,7 +43,6 @@ archives:
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     ids:
       - linux-amd64
-      - linux-arm64
       - darwin-amd64
       - darwin-arm64
 
