@@ -47,21 +47,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Restore goreleaser-cross Image Cache if it exists
-        id: cache-docker-goreleaser-cross
-        uses: actions/cache@v3
-        with:
-          path: ci/cache/docker/goreleaser-cross
-          key: cache-docker-goreleaser-cross-1.26.4
-
-      - name: Update goreleaser-cross Image Cache if cache miss
-        if: steps.cache-docker-goreleaser-cross.outputs.cache-hit != 'true'
-        run: docker pull ghcr.io/goreleaser/goreleaser-cross:v1.26.4 && mkdir -p ci/cache/docker/goreleaser-cross && docker image save ghcr.io/goreleaser/goreleaser-cross:v1.26.4 --output ./ci/cache/docker/goreleaser-cross/goreleaser-cross-1.26.4.tar
-
-      - name: Use MySQL Image Cache if cache hit
-        if: steps.cache-docker-goreleaser-cross.outputs.cache-hit == 'true'
-        run: docker image load --input ./ci/cache/docker/goreleaser-cross/goreleaser-cross-1.26.4.tar
-
       - name: Build with goreleaser-cross (manual docker run)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -75,7 +60,7 @@ jobs:
             -v "$PWD":/go/src/github.com/cyrilschreiber3/wg-tray-go \
             -w /go/src/github.com/cyrilschreiber3/wg-tray-go \
             --entrypoint /bin/sh \
-            ghcr.io/goreleaser/goreleaser-cross:v1.26.4 \
+            ghcr.io/goreleaser/goreleaser-cross:latest \
             -c "apt-get update && apt-get install -y --no-install-recommends libayatana-appindicator3-dev libgtk-3-dev pkg-config && /entrypoint.sh release --clean"
 
   package-macos-arm:
