@@ -85,6 +85,8 @@ buildGoApplication rec {
           <string>${prettyPname}</string>
           <key>CFBundleIdentifier</key>
           <string>com.cyrilschreiber.${pname}</string>
+          <key>CFBundleShortVersionString</key>
+          <string>${version}</string>
           <key>CFBundleVersion</key>
           <string>${version}</string>
           <key>CFBundleExecutable</key>

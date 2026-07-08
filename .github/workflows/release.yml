@@ -142,20 +142,32 @@ jobs:
           npm install -g create-dmg
           mkdir -p dist
 
-          create-dmg "$APP_BUNDLE_STAGE" --no-code-sign --overwrite --out dist
+          before="$(mktemp)"
+          after="$(mktemp)"
+          find . -maxdepth 1 -name '*.dmg' -print > "$before"
 
-          DMG="$(find dist -maxdepth 1 -name '*.dmg' | head -n1)"
-          if [ -z "${DMG:-}" ]; then
+          create-dmg "$APP_BUNDLE_STAGE" --no-code-sign --overwrite
+
+          find . -maxdepth 1 -name '*.dmg' -print > "$after"
+          DMG_PATH="$(comm -13 <(sort "$before") <(sort "$after") | head -n1 || true)"
+
+          if [ -z "${DMG_PATH:-}" ]; then
+            # fallback: most recent dmg in cwd
+            DMG_PATH="$(ls -t ./*.dmg 2>/dev/null | head -n1 || true)"
+          fi
+
+          if [ -z "${DMG_PATH:-}" ]; then
             echo "DMG not produced"
-            ls -la dist
+            ls -la
             exit 1
           fi
 
           VER="${GITHUB_REF_NAME#v}"
           FINAL_DMG="dist/wg-tray-go_${VER}_darwin_arm64.dmg"
-          mv "$DMG" "$FINAL_DMG"
+          mv "$DMG_PATH" "$FINAL_DMG"
 
           echo "DMG_PATH=$FINAL_DMG" >> "$GITHUB_ENV"
+          echo "Created $FINAL_DMG"
 
       - name: Upload DMG to GitHub Release
         env:
@@ -243,20 +255,32 @@ jobs:
           npm install -g create-dmg
           mkdir -p dist
 
-          create-dmg "$APP_BUNDLE_STAGE" --no-code-sign --overwrite --out dist
+          before="$(mktemp)"
+          after="$(mktemp)"
+          find . -maxdepth 1 -name '*.dmg' -print > "$before"
 
-          DMG="$(find dist -maxdepth 1 -name '*.dmg' | head -n1)"
-          if [ -z "${DMG:-}" ]; then
+          create-dmg "$APP_BUNDLE_STAGE" --no-code-sign --overwrite
+
+          find . -maxdepth 1 -name '*.dmg' -print > "$after"
+          DMG_PATH="$(comm -13 <(sort "$before") <(sort "$after") | head -n1 || true)"
+
+          if [ -z "${DMG_PATH:-}" ]; then
+            # fallback: most recent dmg in cwd
+            DMG_PATH="$(ls -t ./*.dmg 2>/dev/null | head -n1 || true)"
+          fi
+
+          if [ -z "${DMG_PATH:-}" ]; then
             echo "DMG not produced"
-            ls -la dist
+            ls -la
             exit 1
           fi
 
           VER="${GITHUB_REF_NAME#v}"
           FINAL_DMG="dist/wg-tray-go_${VER}_darwin_amd64.dmg"
-          mv "$DMG" "$FINAL_DMG"
+          mv "$DMG_PATH" "$FINAL_DMG"
 
           echo "DMG_PATH=$FINAL_DMG" >> "$GITHUB_ENV"
+          echo "Created $FINAL_DMG"
 
       - name: Upload DMG to GitHub Release
         env:
@@ -342,7 +366,7 @@ jobs:
           cp -a "$STAGE_DIR/nix-result/share/applications" "$PKG_DIR/share/" || true
           cp -a "$STAGE_DIR/nix-result/share/icons" "$PKG_DIR/share/" || true
 
-          TAR="${APP}_${VER}_linux_amd64_nix-layout.tar.gz"
+          TAR="${APP}_${VER}_linux_amd64_pacakge.tar.gz"
           tar -C /tmp -czf "$TAR" "$(basename "$PKG_DIR")"
 
           echo "TAR_PATH=$TAR" >> "$GITHUB_ENV"
