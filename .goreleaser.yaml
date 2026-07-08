@@ -5,7 +5,6 @@ project_name: wg-tray-go
 before:
   hooks:
     - go mod tidy
-    - apk add libayatana-appindicator-dev pkgconfig
 
 builds:
   - &build_base
