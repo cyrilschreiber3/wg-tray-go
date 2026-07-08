@@ -7,34 +7,56 @@ before:
     - go mod tidy
 
 builds:
-  - id: wg-tray-go
+  - &build_base
+    id: linux-amd64
     main: .
     binary: wg-tray-go
+    goos: [linux]
+    goarch: [amd64]
     env:
       - CGO_ENABLED=1
-    goos:
-      - linux
-      - darwin
-    goarch:
-      - amd64
-      - arm64
+      - CC=x86_64-linux-gnu-gcc
     flags:
       - -trimpath
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
 
+  - <<: *build_base
+    id: linux-arm64
+    goarch: [arm64]
+    env:
+      - CGO_ENABLED=1
+      - CC=aarch64-linux-gnu-gcc
+
+  - <<: *build_base
+    id: darwin-amd64
+    goos: [darwin]
+    goarch: [amd64]
+    env:
+      - CGO_ENABLED=1
+      - CC=o64-clang
+
+  - <<: *build_base
+    id: darwin-arm64
+    goos: [darwin]
+    goarch: [arm64]
+    env:
+      - CGO_ENABLED=1
+      - CC=oa64-clang
+
 archives:
   - id: default
-    formats: tar.gz
-    name_template: >-
-      {{ .ProjectName }}_
-      {{- .Version }}_
-      {{- .Os }}_
-      {{- .Arch }}
+    format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    builds:
+      - linux-amd64
+      - linux-arm64
+      - darwin-amd64
+      - darwin-arm64
 
 checksum:
   name_template: checksums.txt
 
 changelog:
-  use: github
   sort: asc
+  use: github
