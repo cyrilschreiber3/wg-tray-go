@@ -1,0 +1,229 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute tag
+        id: meta
+        run: echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  package-macos:
+    name: Package macOS DMG (nix bundle + goreleaser binary)
+    needs: goreleaser
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v15
+
+      - name: Install jq
+        run: brew install jq
+
+      - name: Download GoReleaser darwin arm64 binary artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          APP="wg-tray-go"
+
+          # pick tarball name pattern emitted by goreleaser archives
+          # adjust if your name_template differs
+          ASSET="$(gh release view "$TAG" --json assets \
+            | jq -r '.assets[].name' \
+            | grep -E "^${APP}_${TAG#v}_darwin_arm64\.tar\.gz$" \
+            | head -n1)"
+
+          if [ -z "${ASSET:-}" ]; then
+            echo "Could not find darwin arm64 goreleaser asset"
+            gh release view "$TAG" --json assets | jq -r '.assets[].name'
+            exit 1
+          fi
+
+          gh release download "$TAG" -p "$ASSET" -D /tmp/goreleaser
+          mkdir -p /tmp/goreleaser/unpack
+          tar -xzf "/tmp/goreleaser/$ASSET" -C /tmp/goreleaser/unpack
+
+          # expects binary named wg-tray-go in archive root
+          test -f "/tmp/goreleaser/unpack/$APP"
+          cp "/tmp/goreleaser/unpack/$APP" /tmp/goreleaser/"$APP"
+          chmod +x /tmp/goreleaser/"$APP"
+
+      - name: Build .app bundle with nix
+        run: |
+          set -euo pipefail
+          # adjust target to your flake/package output
+          nix build .#wg-tray-go-app
+
+          # after nix build and APP_BUNDLE detection
+          STAGE_DIR="$(mktemp -d)"
+          cp -aL result "$STAGE_DIR/nix-result"
+
+          # locate .app inside staged nix result
+          APP_BUNDLE_STAGE="$(find "$STAGE_DIR/nix-result" -maxdepth 4 -type d -name '*.app' | head -n1)"
+          if [ -z "${APP_BUNDLE_STAGE:-}" ]; then
+            echo "No .app found in staged nix result"
+            find "$STAGE_DIR/nix-result" -maxdepth 5 -print
+            exit 1
+          fi
+
+          APP="wg-tray-go"
+          cp /tmp/goreleaser/"$APP" "$APP_BUNDLE_STAGE/Contents/MacOS/$APP"
+          chmod +x "$APP_BUNDLE_STAGE/Contents/MacOS/$APP"
+
+          echo "APP_BUNDLE_STAGE=$APP_BUNDLE_STAGE" >> "$GITHUB_ENV"
+
+      - name: Replace nix-built binary with goreleaser binary
+        run: |
+          set -euo pipefail
+          APP="wg-tray-go"
+          BIN_PATH="$APP_BUNDLE_STAGE/Contents/MacOS/$APP"
+
+          test -f "$BIN_PATH"
+          cp /tmp/goreleaser/"$APP" "$BIN_PATH"
+          chmod +x "$BIN_PATH"
+
+      - name: Build DMG with create-dmg
+        run: |
+          set -euo pipefail
+          npm install -g create-dmg
+          mkdir -p dist
+
+          create-dmg "$APP_BUNDLE_STAGE" --no-code-sign --overwrite --out dist
+
+          DMG="$(find dist -maxdepth 1 -name '*.dmg' | head -n1)"
+          if [ -z "${DMG:-}" ]; then
+            echo "DMG not produced"
+            ls -la dist
+            exit 1
+          fi
+
+          echo "DMG_PATH=$DMG" >> "$GITHUB_ENV"
+
+      - name: Upload DMG to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload "${GITHUB_REF_NAME}" "$DMG_PATH" --clobber
+
+  package-linux:
+    name: Package Linux tarball (nix package + goreleaser binary)
+    needs: goreleaser
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v15
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Download GoReleaser linux amd64 binary artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          APP="wg-tray-go"
+
+          ASSET="$(gh release view "$TAG" --json assets \
+            | jq -r '.assets[].name' \
+            | grep -E "^${APP}_${TAG#v}_linux_amd64\.tar\.gz$" \
+            | head -n1)"
+
+          if [ -z "${ASSET:-}" ]; then
+            echo "Could not find linux amd64 goreleaser asset"
+            gh release view "$TAG" --json assets | jq -r '.assets[].name'
+            exit 1
+          fi
+
+          gh release download "$TAG" -p "$ASSET" -D /tmp/goreleaser
+          mkdir -p /tmp/goreleaser/unpack
+          tar -xzf "/tmp/goreleaser/$ASSET" -C /tmp/goreleaser/unpack
+
+          test -f "/tmp/goreleaser/unpack/$APP"
+          cp "/tmp/goreleaser/unpack/$APP" /tmp/goreleaser/"$APP"
+          chmod +x /tmp/goreleaser/"$APP"
+
+      - name: Build package with nix
+        run: |
+          set -euo pipefail
+          # adjust target to your flake/package output
+          nix build .#wg-tray-go
+
+          STAGE_DIR="$(mktemp -d)"
+          cp -aL result "$STAGE_DIR/nix-result"
+
+          test -d "$STAGE_DIR/nix-result/bin"
+          test -d "$STAGE_DIR/nix-result/share"
+
+      - name: Replace binary in result/bin
+        run: |
+          set -euo pipefail
+          APP="wg-tray-go"
+          cp /tmp/goreleaser/"$APP" "$STAGE_DIR/nix-result/bin/$APP"
+          chmod +x "$STAGE_DIR/nix-result/bin/$APP"
+
+      - name: Create portable tarball from nix layout
+        run: |
+          set -euo pipefail
+          APP="wg-tray-go"
+          VER="${GITHUB_REF_NAME#v}"
+          PKG_DIR="/tmp/${APP}-${VER}-linux-amd64"
+
+          PKG_DIR="/tmp/${APP}-${VER}-linux-amd64"
+          mkdir -p "$PKG_DIR"
+          cp -a "$STAGE_DIR/nix-result/bin" "$PKG_DIR/"
+          mkdir -p "$PKG_DIR/share"
+          cp -a "$STAGE_DIR/nix-result/share/applications" "$PKG_DIR/share/" || true
+          cp -a "$STAGE_DIR/nix-result/share/icons" "$PKG_DIR/share/" || true
+
+          TAR="${APP}_${VER}_linux_amd64_nix-layout.tar.gz"
+          tar -C /tmp -czf "$TAR" "$(basename "$PKG_DIR")"
+
+          echo "TAR_PATH=$TAR" >> "$GITHUB_ENV"
+
+      - name: Upload linux tarball to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload "${GITHUB_REF_NAME}" "$TAR_PATH" --clobber
