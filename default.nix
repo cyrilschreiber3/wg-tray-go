@@ -84,7 +84,7 @@ buildGoApplication rec {
           <key>CFBundleDisplayName</key>
           <string>${prettyPname}</string>
           <key>CFBundleIdentifier</key>
-          <string>com.cyrilschreiber.${pname}</string>
+          <string>ch.cyrilschreiber.${pname}</string>
           <key>CFBundleShortVersionString</key>
           <string>${version}</string>
           <key>CFBundleVersion</key>
@@ -95,10 +95,10 @@ buildGoApplication rec {
           <string>${pname}.icns</string>
           <!-- avoid having a blurry icon and text -->
           <key>NSHighResolutionCapable</key>
-          <string>True</string>
+          <true/>
           <!-- avoid showing the app on the Dock -->
           <key>LSUIElement</key>
-          <string>1</string>
+          <true/>
       </dict>
       </plist>
       EOF

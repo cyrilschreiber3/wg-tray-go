@@ -47,6 +47,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Restore goreleaser-cross Image Cache if it exists
+        id: cache-docker-goreleaser-cross
+        uses: actions/cache@v3
+        with:
+          path: ci/cache/docker/goreleaser-cross
+          key: cache-docker-goreleaser-cross-1.26.4
+
+      - name: Update goreleaser-cross Image Cache if cache miss
+        if: steps.cache-docker-goreleaser-cross.outputs.cache-hit != 'true'
+        run: docker pull ghcr.io/goreleaser/goreleaser-cross:1.26.4 && mkdir -p ci/cache/docker/goreleaser-cross && docker image save ghcr.io/goreleaser/goreleaser-cross:1.26.4 --output ./ci/cache/docker/goreleaser-cross/goreleaser-cross-1.26.4.tar
+
+      - name: Use MySQL Image Cache if cache hit
+        if: steps.cache-docker-goreleaser-cross.outputs.cache-hit == 'true'
+        run: docker image load --input ./ci/cache/docker/goreleaser-cross/goreleaser-cross-1.26.4.tar
+
       - name: Build with goreleaser-cross (manual docker run)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -60,7 +75,7 @@ jobs:
             -v "$PWD":/go/src/github.com/cyrilschreiber3/wg-tray-go \
             -w /go/src/github.com/cyrilschreiber3/wg-tray-go \
             --entrypoint /bin/sh \
-            ghcr.io/goreleaser/goreleaser-cross:latest \
+            ghcr.io/goreleaser/goreleaser-cross:1.26.4 \
             -c "apt-get update && apt-get install -y --no-install-recommends libayatana-appindicator3-dev libgtk-3-dev pkg-config && /entrypoint.sh release --clean"
 
   package-macos-arm:
@@ -136,6 +151,33 @@ jobs:
           cp /tmp/goreleaser/"$APP" "$BIN_PATH"
           chmod +x "$BIN_PATH"
 
+      - name: Import Apple signing certificate
+        env:
+          APPLE_CERT_P12: ${{ secrets.APPLE_CERT_P12 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN=build.keychain
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+
+          echo "$APPLE_CERT_P12" | base64 --decode > /tmp/cert.p12
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import /tmp/cert.p12 -k "$KEYCHAIN" -P "$APPLE_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+
+      - name: Codesign app bundle
+        env:
+          APP_SIGN_IDENTITY: "Developer ID Application"
+        run: |
+          set -euo pipefail
+          codesign --force --deep --options runtime --timestamp --sign "$APP_SIGN_IDENTITY" "$APP_BUNDLE_STAGE"
+          codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE_STAGE"
+          spctl -a -vv "$APP_BUNDLE_STAGE"
+
       - name: Build DMG with create-dmg
         run: |
           set -euo pipefail
@@ -146,28 +188,41 @@ jobs:
           after="$(mktemp)"
           find . -maxdepth 1 -name '*.dmg' -print > "$before"
 
-          create-dmg "$APP_BUNDLE_STAGE" --no-code-sign --overwrite
+          create-dmg "$APP_BUNDLE_STAGE" --overwrite
 
           find . -maxdepth 1 -name '*.dmg' -print > "$after"
           DMG_PATH="$(comm -13 <(sort "$before") <(sort "$after") | head -n1 || true)"
-
-          if [ -z "${DMG_PATH:-}" ]; then
-            # fallback: most recent dmg in cwd
-            DMG_PATH="$(ls -t ./*.dmg 2>/dev/null | head -n1 || true)"
-          fi
-
-          if [ -z "${DMG_PATH:-}" ]; then
-            echo "DMG not produced"
-            ls -la
-            exit 1
-          fi
+          [ -n "${DMG_PATH:-}" ] || DMG_PATH="$(ls -t ./*.dmg 2>/dev/null | head -n1 || true)"
+          [ -n "${DMG_PATH:-}" ] || (echo "DMG not produced"; ls -la; exit 1)
 
           VER="${GITHUB_REF_NAME#v}"
-          FINAL_DMG="dist/wg-tray-go_${VER}_darwin_arm64.dmg"
+          FINAL_DMG="dist/wg-tray-go_${VER}_darwin_${RUNNER_ARCH == 'ARM64' && 'arm64' || 'amd64'}.dmg"
           mv "$DMG_PATH" "$FINAL_DMG"
 
           echo "DMG_PATH=$FINAL_DMG" >> "$GITHUB_ENV"
-          echo "Created $FINAL_DMG"
+
+      - name: Codesign DMG
+        env:
+          APP_SIGN_IDENTITY: "Developer ID Application: Cyril Schreiber (8WJWU6NY7L)"
+        run: |
+          set -euo pipefail
+          codesign --force --timestamp --sign "$APP_SIGN_IDENTITY" "$DMG_PATH"
+          codesign --verify --verbose=2 "$DMG_PATH"
+
+      - name: Notarize DMG
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          xcrun notarytool submit "$DMG_PATH" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --wait
+          xcrun stapler staple "$DMG_PATH"
+          xcrun stapler validate "$DMG_PATH"
 
       - name: Upload DMG to GitHub Release
         env:
@@ -366,7 +421,7 @@ jobs:
           cp -a "$STAGE_DIR/nix-result/share/applications" "$PKG_DIR/share/" || true
           cp -a "$STAGE_DIR/nix-result/share/icons" "$PKG_DIR/share/" || true
 
-          TAR="${APP}_${VER}_linux_amd64_pacakge.tar.gz"
+          TAR="${APP}_${VER}_linux_amd64_package.tar.gz"
           tar -C /tmp -czf "$TAR" "$(basename "$PKG_DIR")"
 
           echo "TAR_PATH=$TAR" >> "$GITHUB_ENV"
