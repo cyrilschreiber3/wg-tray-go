@@ -10,42 +10,22 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
-
-    env:
-      # The base64 of the contents of your '.p12' key.
-      MACOS_SIGN_P12: ${{ secrets.APPLE_CERT_P12 }}
-
-      # The password to open the '.p12' key.
-      MACOS_SIGN_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
-
-      # A password for our temporary keychain
-      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-
-      # The base64 of the contents of your '.p8' key.
-      MACOS_NOTARY_KEY: ${{ secrets.APPLE_NOTARY_KEY }}
-
-      # The ID of the '.p8' key.
-      # You can find it in the filename, as well as the Apple Developer Portal
-      # website.
-      MACOS_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
-
-      # The issuer UUID.
-      # You can find it in the Apple Developer Portal website.
-      MACOS_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
-
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Compute tag
+        id: meta
+        run: echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
       - name: Install dependencies
         run: |
-          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y libayatana-appindicator3-dev pkg-config
 
@@ -54,28 +34,428 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # # Needed for macOS signing/notarization in GoReleaser
-      # - name: Import Apple certificate
-      #   if: startsWith(matrix.id, 'darwin-')
-      #   env:
-      #     APPLE_CERT_P12: ${{ secrets.APPLE_CERT_P12 }}
-      #     APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
-      #     KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-      #   run: |
-      #     set -euo pipefail
-      #     KEYCHAIN=build.keychain
-      #     KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
-      #     echo "$APPLE_CERT_P12" | base64 --decode > /tmp/cert.p12
+      - name: Run tests
+        run: go test ./...
 
-      #     security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-      #     security set-keychain-settings -lut 21600 "$KEYCHAIN"
-      #     security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-      #     security import /tmp/cert.p12 -k "$KEYCHAIN" -P "$APPLE_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
-      #     security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
-      #     security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
-      - name: Run GoReleaser (split by target)
-        uses: goreleaser/goreleaser-action@v6
+      - name: Login to GHCR
+        uses: docker/login-action@v3
         with:
-          version: "~> v2"
-          args: release --clean
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build with goreleaser-cross (manual docker run)
+        env:
+          # The base64 of the contents of your '.p12' key.
+          MACOS_SIGN_P12: ${{ secrets.APPLE_CERT_P12 }}
+
+          # The password to open the '.p12' key.
+          MACOS_SIGN_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+
+          # A password for our temporary keychain
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+
+          # The base64 of the contents of your '.p8' key.
+          MACOS_NOTARY_KEY: ${{ secrets.APPLE_NOTARY_KEY }}
+
+          # The ID of the '.p8' key.
+          # You can find it in the filename, as well as the Apple Developer Portal
+          # website.
+          MACOS_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+
+          # The issuer UUID.
+          # You can find it in the Apple Developer Portal website.
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          docker run --rm --privileged \
+            -e GITHUB_TOKEN \
+            -e MACOS_SIGN_P12 \
+            -e MACOS_SIGN_PASSWORD \
+            -e KEYCHAIN_PASSWORD \
+            -e MACOS_NOTARY_KEY \
+            -e MACOS_NOTARY_KEY_ID \
+            -e MACOS_NOTARY_ISSUER_ID \
+            -e CGO_ENABLED=1 \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$PWD":/go/src/github.com/cyrilschreiber3/wg-tray-go \
+            -w /go/src/github.com/cyrilschreiber3/wg-tray-go \
+            --entrypoint /bin/sh \
+            ghcr.io/goreleaser/goreleaser-cross:latest \
+            -c "apt-get update && apt-get install -y --no-install-recommends libayatana-appindicator3-dev libgtk-3-dev pkg-config && /entrypoint.sh release --clean"
+
+  package-macos-arm:
+    name: Package macOS DMG (arm64, nix bundle + goreleaser binary)
+    needs: build
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v15
+
+      - name: Install jq
+        run: brew install jq
+
+      - name: Download GoReleaser darwin arm64 binary artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          APP="wg-tray-go"
+
+          ASSET="$(gh release view "$TAG" --json assets \
+            | jq -r '.assets[].name' \
+            | grep -E "^${APP}_${TAG#v}_darwin_arm64\.tar\.gz$" \
+            | head -n1)"
+
+          if [ -z "${ASSET:-}" ]; then
+            echo "Could not find darwin arm64 goreleaser asset"
+            gh release view "$TAG" --json assets | jq -r '.assets[].name'
+            exit 1
+          fi
+
+          gh release download "$TAG" -p "$ASSET" -D /tmp/goreleaser
+          mkdir -p /tmp/goreleaser/unpack
+          tar -xzf "/tmp/goreleaser/$ASSET" -C /tmp/goreleaser/unpack
+
+          test -f "/tmp/goreleaser/unpack/$APP"
+          cp "/tmp/goreleaser/unpack/$APP" /tmp/goreleaser/"$APP"
+          chmod +x /tmp/goreleaser/"$APP"
+
+      - name: Build .app bundle with nix
+        run: |
+          set -euo pipefail
+          nix build .#wg-tray-go
+
+          STAGE_DIR="$(mktemp -d)"
+          cp -RL result "$STAGE_DIR/nix-result"
+          chmod -R u+w "$STAGE_DIR/nix-result"
+
+          APP_BUNDLE_STAGE="$(find "$STAGE_DIR/nix-result" -maxdepth 4 -type d -name '*.app' | head -n1)"
+          if [ -z "${APP_BUNDLE_STAGE:-}" ]; then
+            echo "No .app found in staged nix result"
+            find "$STAGE_DIR/nix-result" -maxdepth 5 -print
+            exit 1
+          fi
+
+          APP="wg-tray-go"
+          cp /tmp/goreleaser/"$APP" "$APP_BUNDLE_STAGE/Contents/MacOS/$APP"
+          chmod +x "$APP_BUNDLE_STAGE/Contents/MacOS/$APP"
+
+          echo "APP_BUNDLE_STAGE=$APP_BUNDLE_STAGE" >> "$GITHUB_ENV"
+
+      - name: Replace nix-built binary with goreleaser binary
+        run: |
+          set -euo pipefail
+          APP="wg-tray-go"
+          BIN_PATH="$APP_BUNDLE_STAGE/Contents/MacOS/$APP"
+
+          test -f "$BIN_PATH"
+          cp /tmp/goreleaser/"$APP" "$BIN_PATH"
+          chmod +x "$BIN_PATH"
+
+      - name: Import Apple signing certificate
+        env:
+          APPLE_CERT_P12: ${{ secrets.APPLE_CERT_P12 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+          APPLE_NOTARY_KEY: ${{ secrets.APPLE_NOTARY_KEY }}
+          APPLE_NOTARY_PROFILE_NAME: ${{ secrets.APPLE_NOTARY_PROFILE_NAME }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN=build.keychain
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+
+          echo "$APPLE_CERT_P12" | base64 --decode > /tmp/cert.p12
+          echo -n "$APPLE_NOTARY_KEY" | base64 --decode /tmp/key.p8
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import /tmp/cert.p12 -k "$KEYCHAIN" -P "$APPLE_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+
+          # create notary profile
+          xcrun notarytool store-credentials "$APPLE_NOTARY_PROFILE_NAME" \
+            --key /tmp/key.p8 \
+            --key-id "$APPLE_NOTARY_KEY_ID" \
+            --issuer "$APPLE_NOTARY_ISSUER_ID" \
+            --keychain $KEYCHAIN
+
+          # export the keychain path
+          echo "KEYCHAIN_PATH=$KEYCHAIN" >>$GITHUB_ENV
+
+      - name: Codesign app bundle
+        env:
+          APP_SIGN_IDENTITY: ${{ secrets.APP_SIGN_IDENTITY }}
+        run: |
+          set -euo pipefail
+          codesign --force --deep --options runtime --timestamp --sign "$APP_SIGN_IDENTITY" "$APP_BUNDLE_STAGE"
+          codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE_STAGE"
+          spctl -a -vv "$APP_BUNDLE_STAGE"
+
+      - name: Build DMG with create-dmg
+        run: |
+          set -euo pipefail
+          npm install -g create-dmg
+          mkdir -p dist
+
+          before="$(mktemp)"
+          after="$(mktemp)"
+          find . -maxdepth 1 -name '*.dmg' -print > "$before"
+
+          create-dmg "$APP_BUNDLE_STAGE" --overwrite
+
+          find . -maxdepth 1 -name '*.dmg' -print > "$after"
+          DMG_PATH="$(comm -13 <(sort "$before") <(sort "$after") | head -n1 || true)"
+          [ -n "${DMG_PATH:-}" ] || DMG_PATH="$(ls -t ./*.dmg 2>/dev/null | head -n1 || true)"
+          [ -n "${DMG_PATH:-}" ] || (echo "DMG not produced"; ls -la; exit 1)
+
+          VER="${GITHUB_REF_NAME#v}"
+          FINAL_DMG="dist/wg-tray-go_${VER}_darwin_${RUNNER_ARCH == 'ARM64' && 'arm64' || 'amd64'}.dmg"
+          mv "$DMG_PATH" "$FINAL_DMG"
+
+          echo "DMG_PATH=$FINAL_DMG" >> "$GITHUB_ENV"
+
+      - name: Codesign DMG
+        env:
+          APP_SIGN_IDENTITY: ${{ secrets.APP_SIGN_IDENTITY }}
+        run: |
+          set -euo pipefail
+          codesign --force --timestamp --sign "$APP_SIGN_IDENTITY" "$DMG_PATH"
+          codesign --verify --verbose=2 "$DMG_PATH"
+
+      - name: Notarize DMG
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          xcrun notarytool submit "$DMG_PATH" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --wait
+          xcrun stapler staple "$DMG_PATH"
+          xcrun stapler validate "$DMG_PATH"
+
+      - name: Upload DMG to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload "${GITHUB_REF_NAME}" "$DMG_PATH" --clobber
+
+  package-macos-intel:
+    name: Package macOS DMG (x86_64, nix bundle + goreleaser binary)
+    needs: build
+    runs-on: macos-15-intel
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v15
+
+      - name: Install jq
+        run: brew install jq
+
+      - name: Download GoReleaser darwin amd64 binary artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          APP="wg-tray-go"
+
+          ASSET="$(gh release view "$TAG" --json assets \
+            | jq -r '.assets[].name' \
+            | grep -E "^${APP}_${TAG#v}_darwin_amd64\.tar\.gz$" \
+            | head -n1)"
+
+          if [ -z "${ASSET:-}" ]; then
+            echo "Could not find darwin amd64 goreleaser asset"
+            gh release view "$TAG" --json assets | jq -r '.assets[].name'
+            exit 1
+          fi
+
+          gh release download "$TAG" -p "$ASSET" -D /tmp/goreleaser
+          mkdir -p /tmp/goreleaser/unpack
+          tar -xzf "/tmp/goreleaser/$ASSET" -C /tmp/goreleaser/unpack
+
+          test -f "/tmp/goreleaser/unpack/$APP"
+          cp "/tmp/goreleaser/unpack/$APP" /tmp/goreleaser/"$APP"
+          chmod +x /tmp/goreleaser/"$APP"
+
+      - name: Build .app bundle with nix
+        run: |
+          set -euo pipefail
+          nix build .#wg-tray-go
+
+          STAGE_DIR="$(mktemp -d)"
+          cp -RL result "$STAGE_DIR/nix-result"
+          chmod -R u+w "$STAGE_DIR/nix-result"
+
+          APP_BUNDLE_STAGE="$(find "$STAGE_DIR/nix-result" -maxdepth 4 -type d -name '*.app' | head -n1)"
+          if [ -z "${APP_BUNDLE_STAGE:-}" ]; then
+            echo "No .app found in staged nix result"
+            find "$STAGE_DIR/nix-result" -maxdepth 5 -print
+            exit 1
+          fi
+
+          APP="wg-tray-go"
+          cp /tmp/goreleaser/"$APP" "$APP_BUNDLE_STAGE/Contents/MacOS/$APP"
+          chmod +x "$APP_BUNDLE_STAGE/Contents/MacOS/$APP"
+
+          echo "APP_BUNDLE_STAGE=$APP_BUNDLE_STAGE" >> "$GITHUB_ENV"
+
+      - name: Replace nix-built binary with goreleaser binary
+        run: |
+          set -euo pipefail
+          APP="wg-tray-go"
+          BIN_PATH="$APP_BUNDLE_STAGE/Contents/MacOS/$APP"
+
+          test -f "$BIN_PATH"
+          cp /tmp/goreleaser/"$APP" "$BIN_PATH"
+          chmod +x "$BIN_PATH"
+
+      - name: Build DMG with create-dmg
+        run: |
+          set -euo pipefail
+          npm install -g create-dmg
+          mkdir -p dist
+
+          before="$(mktemp)"
+          after="$(mktemp)"
+          find . -maxdepth 1 -name '*.dmg' -print > "$before"
+
+          create-dmg "$APP_BUNDLE_STAGE" --no-code-sign --overwrite
+
+          find . -maxdepth 1 -name '*.dmg' -print > "$after"
+          DMG_PATH="$(comm -13 <(sort "$before") <(sort "$after") | head -n1 || true)"
+
+          if [ -z "${DMG_PATH:-}" ]; then
+            # fallback: most recent dmg in cwd
+            DMG_PATH="$(ls -t ./*.dmg 2>/dev/null | head -n1 || true)"
+          fi
+
+          if [ -z "${DMG_PATH:-}" ]; then
+            echo "DMG not produced"
+            ls -la
+            exit 1
+          fi
+
+          VER="${GITHUB_REF_NAME#v}"
+          FINAL_DMG="dist/wg-tray-go_${VER}_darwin_amd64.dmg"
+          mv "$DMG_PATH" "$FINAL_DMG"
+
+          echo "DMG_PATH=$FINAL_DMG" >> "$GITHUB_ENV"
+          echo "Created $FINAL_DMG"
+
+      - name: Upload DMG to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload "${GITHUB_REF_NAME}" "$DMG_PATH" --clobber
+
+  package-linux:
+    name: Package Linux tarball (nix package + goreleaser binary)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v15
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Download GoReleaser linux amd64 binary artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          APP="wg-tray-go"
+
+          ASSET="$(gh release view "$TAG" --json assets \
+            | jq -r '.assets[].name' \
+            | grep -E "^${APP}_${TAG#v}_linux_amd64\.tar\.gz$" \
+            | head -n1)"
+
+          if [ -z "${ASSET:-}" ]; then
+            echo "Could not find linux amd64 goreleaser asset"
+            gh release view "$TAG" --json assets | jq -r '.assets[].name'
+            exit 1
+          fi
+
+          gh release download "$TAG" -p "$ASSET" -D /tmp/goreleaser
+          mkdir -p /tmp/goreleaser/unpack
+          tar -xzf "/tmp/goreleaser/$ASSET" -C /tmp/goreleaser/unpack
+
+          test -f "/tmp/goreleaser/unpack/$APP"
+          cp "/tmp/goreleaser/unpack/$APP" /tmp/goreleaser/"$APP"
+          chmod +x /tmp/goreleaser/"$APP"
+
+      - name: Build package with nix
+        run: |
+          set -euo pipefail
+          # adjust target to your flake/package output
+          nix build .#wg-tray-go
+
+          STAGE_DIR="$(mktemp -d)"
+          cp -RL result "$STAGE_DIR/nix-result"
+          chmod -R u+w "$STAGE_DIR/nix-result"
+
+          test -d "$STAGE_DIR/nix-result/bin"
+          test -d "$STAGE_DIR/nix-result/share"
+
+          echo "STAGE_DIR=$STAGE_DIR" >> "$GITHUB_ENV"
+
+      - name: Replace binary in result/bin
+        run: |
+          set -euo pipefail
+          APP="wg-tray-go"
+          cp /tmp/goreleaser/"$APP" "$STAGE_DIR/nix-result/bin/$APP"
+          chmod +x "$STAGE_DIR/nix-result/bin/$APP"
+
+      - name: Create portable tarball from nix layout
+        run: |
+          set -euo pipefail
+          APP="wg-tray-go"
+          VER="${GITHUB_REF_NAME#v}"
+          PKG_DIR="/tmp/${APP}-${VER}-linux-amd64"
+
+          PKG_DIR="/tmp/${APP}-${VER}-linux-amd64"
+          mkdir -p "$PKG_DIR"
+          cp -a "$STAGE_DIR/nix-result/bin" "$PKG_DIR/"
+          mkdir -p "$PKG_DIR/share"
+          cp -a "$STAGE_DIR/nix-result/share/applications" "$PKG_DIR/share/" || true
+          cp -a "$STAGE_DIR/nix-result/share/icons" "$PKG_DIR/share/" || true
+
+          TAR="${APP}_${VER}_linux_amd64_package.tar.gz"
+          tar -C /tmp -czf "$TAR" "$(basename "$PKG_DIR")"
+
+          echo "TAR_PATH=$TAR" >> "$GITHUB_ENV"
+
+      - name: Upload linux tarball to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload "${GITHUB_REF_NAME}" "$TAR_PATH" --clobber
