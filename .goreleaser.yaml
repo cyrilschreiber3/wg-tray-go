@@ -46,6 +46,19 @@ archives:
       - darwin-amd64
       - darwin-arm64
 
+notarize:
+  macos:
+    - ids:
+        - darwin-arm64
+        - darwin-amd64
+      sign:
+        certificate: "{{ .Env.MACOS_SIGN_P12 }}"
+        password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
+      notarize:
+        issuer_id: "{{.Env.MACOS_NOTARY_ISSUER_ID}}"
+        key: "{{.Env.MACOS_NOTARY_KEY}}"
+        key_id: "{{.Env.MACOS_NOTARY_KEY_ID}}"
+
 checksum:
   name_template: checksums.txt
 
