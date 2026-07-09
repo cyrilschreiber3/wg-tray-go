@@ -201,7 +201,12 @@ jobs:
           APPLE_NOTARY_PROFILE_NAME: ${{ secrets.APPLE_NOTARY_PROFILE_NAME }}
         run: |
           set -euo pipefail
-          xcrun notarytool submit "$APP_BUNDLE_STAGE" \
+
+          ZIP_BUNDLE_STAGE="/tmp/WGTrayGo.app.zip"
+
+          /usr/bin/ditto -c -k --keepParent "$APP_BUNDLE_STAGE" "$ZIP_PATH"
+
+          xcrun notarytool submit "$ZIP_PATH" \
             --keychain-profile "$APPLE_NOTARY_PROFILE_NAME" \
             --wait
 
