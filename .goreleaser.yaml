@@ -48,7 +48,8 @@ archives:
 
 notarize:
   macos:
-    - ids:
+    - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
+      ids:
         - darwin-arm64
         - darwin-amd64
       sign:
