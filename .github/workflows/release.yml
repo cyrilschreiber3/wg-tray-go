@@ -235,7 +235,7 @@ jobs:
           [ -n "${DMG_PATH:-}" ] || (echo "DMG not produced"; ls -la; exit 1)
 
           VER="${GITHUB_REF_NAME#v}"
-          FINAL_DMG="dist/wg-tray-go_${VER}_darwin_${RUNNER_ARCH == 'ARM64' && 'arm64' || 'amd64'}.dmg"
+          FINAL_DMG="dist/wg-tray-go_${VER}_darwin_arm64.dmg"
           mv "$DMG_PATH" "$FINAL_DMG"
 
           echo "DMG_PATH=$FINAL_DMG" >> "$GITHUB_ENV"
