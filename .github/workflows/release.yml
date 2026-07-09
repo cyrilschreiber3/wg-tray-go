@@ -267,119 +267,6 @@ jobs:
           set -euo pipefail
           gh release upload "${GITHUB_REF_NAME}" "$DMG_PATH" --clobber
 
-  package-macos-intel:
-    name: Package macOS DMG (x86_64, nix bundle + goreleaser binary)
-    needs: build
-    runs-on: macos-15-intel
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v15
-
-      - name: Install jq
-        run: brew install jq
-
-      - name: Download GoReleaser darwin amd64 binary artifact
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          TAG="${GITHUB_REF_NAME}"
-          APP="wg-tray-go"
-
-          ASSET="$(gh release view "$TAG" --json assets \
-            | jq -r '.assets[].name' \
-            | grep -E "^${APP}_${TAG#v}_darwin_amd64\.tar\.gz$" \
-            | head -n1)"
-
-          if [ -z "${ASSET:-}" ]; then
-            echo "Could not find darwin amd64 goreleaser asset"
-            gh release view "$TAG" --json assets | jq -r '.assets[].name'
-            exit 1
-          fi
-
-          gh release download "$TAG" -p "$ASSET" -D /tmp/goreleaser
-          mkdir -p /tmp/goreleaser/unpack
-          tar -xzf "/tmp/goreleaser/$ASSET" -C /tmp/goreleaser/unpack
-
-          test -f "/tmp/goreleaser/unpack/$APP"
-          cp "/tmp/goreleaser/unpack/$APP" /tmp/goreleaser/"$APP"
-          chmod +x /tmp/goreleaser/"$APP"
-
-      - name: Build .app bundle with nix
-        run: |
-          set -euo pipefail
-          nix build .#wg-tray-go
-
-          STAGE_DIR="$(mktemp -d)"
-          cp -RL result "$STAGE_DIR/nix-result"
-          chmod -R u+w "$STAGE_DIR/nix-result"
-
-          APP_BUNDLE_STAGE="$(find "$STAGE_DIR/nix-result" -maxdepth 4 -type d -name '*.app' | head -n1)"
-          if [ -z "${APP_BUNDLE_STAGE:-}" ]; then
-            echo "No .app found in staged nix result"
-            find "$STAGE_DIR/nix-result" -maxdepth 5 -print
-            exit 1
-          fi
-
-          APP="wg-tray-go"
-          cp /tmp/goreleaser/"$APP" "$APP_BUNDLE_STAGE/Contents/MacOS/$APP"
-          chmod +x "$APP_BUNDLE_STAGE/Contents/MacOS/$APP"
-
-          echo "APP_BUNDLE_STAGE=$APP_BUNDLE_STAGE" >> "$GITHUB_ENV"
-
-      - name: Replace nix-built binary with goreleaser binary
-        run: |
-          set -euo pipefail
-          APP="wg-tray-go"
-          BIN_PATH="$APP_BUNDLE_STAGE/Contents/MacOS/$APP"
-
-          test -f "$BIN_PATH"
-          cp /tmp/goreleaser/"$APP" "$BIN_PATH"
-          chmod +x "$BIN_PATH"
-
-      - name: Build DMG with create-dmg
-        run: |
-          set -euo pipefail
-          npm install -g create-dmg
-          mkdir -p dist
-
-          before="$(mktemp)"
-          after="$(mktemp)"
-          find . -maxdepth 1 -name '*.dmg' -print > "$before"
-
-          create-dmg "$APP_BUNDLE_STAGE" --no-code-sign --overwrite
-
-          find . -maxdepth 1 -name '*.dmg' -print > "$after"
-          DMG_PATH="$(comm -13 <(sort "$before") <(sort "$after") | head -n1 || true)"
-
-          if [ -z "${DMG_PATH:-}" ]; then
-            # fallback: most recent dmg in cwd
-            DMG_PATH="$(ls -t ./*.dmg 2>/dev/null | head -n1 || true)"
-          fi
-
-          if [ -z "${DMG_PATH:-}" ]; then
-            echo "DMG not produced"
-            ls -la
-            exit 1
-          fi
-
-          VER="${GITHUB_REF_NAME#v}"
-          FINAL_DMG="dist/wg-tray-go_${VER}_darwin_amd64.dmg"
-          mv "$DMG_PATH" "$FINAL_DMG"
-
-          echo "DMG_PATH=$FINAL_DMG" >> "$GITHUB_ENV"
-          echo "Created $FINAL_DMG"
-
-      - name: Upload DMG to GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          gh release upload "${GITHUB_REF_NAME}" "$DMG_PATH" --clobber
-
   package-linux:
     name: Package Linux tarball (nix package + goreleaser binary)
     needs: build
@@ -468,3 +355,52 @@ jobs:
         run: |
           set -euo pipefail
           gh release upload "${GITHUB_REF_NAME}" "$TAR_PATH" --clobber
+
+  update-checksums:
+    name: Update checksums.txt from release assets
+    needs:
+      - package-macos-arm
+      - package-linux
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Download all current release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          mkdir -p /tmp/release-assets
+          gh release download "$TAG" -D /tmp/release-assets
+
+          echo "Downloaded assets:"
+          ls -la /tmp/release-assets
+
+      - name: Generate checksums.txt (sha256)
+        run: |
+          set -euo pipefail
+          cd /tmp/release-assets
+
+          # Exclude existing checksum files/signature sidecars if present
+          find . -maxdepth 1 -type f \
+            ! -name 'checksums.txt' \
+            ! -name '*.sha256' \
+            ! -name '*.sig' \
+            -print0 \
+            | sort -z \
+            | xargs -0 sha256sum > checksums.txt
+
+          echo "Generated checksums.txt:"
+          cat checksums.txt
+
+      - name: Upload checksums.txt to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          gh release upload "$TAG" /tmp/release-assets/checksums.txt --clobber
