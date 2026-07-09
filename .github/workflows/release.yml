@@ -76,4 +76,4 @@ jobs:
         uses: goreleaser/goreleaser-action@v6
         with:
           version: "~> v2"
-          args: release --clean --split --id ${{ matrix.id }}
+          args: release --clean
