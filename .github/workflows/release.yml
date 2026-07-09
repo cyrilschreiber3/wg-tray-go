@@ -204,9 +204,9 @@ jobs:
 
           ZIP_BUNDLE_STAGE="/tmp/WGTrayGo.app.zip"
 
-          /usr/bin/ditto -c -k --keepParent "$APP_BUNDLE_STAGE" "$ZIP_PATH"
+          /usr/bin/ditto -c -k --keepParent "$APP_BUNDLE_STAGE" "$ZIP_BUNDLE_STAGE"
 
-          xcrun notarytool submit "$ZIP_PATH" \
+          xcrun notarytool submit "$ZIP_BUNDLE_STAGE" \
             --keychain-profile "$APPLE_NOTARY_PROFILE_NAME" \
             --wait
 
@@ -215,7 +215,7 @@ jobs:
           set -euo pipefail
           xcrun stapler staple "$APP_BUNDLE_STAGE"
           xcrun stapler validate "$APP_BUNDLE_STAGE"
-          spctl -a -t exec -vv "$APP_BUNDLE_STAGE"
+          spctl -a -t exec -vv "$APP_BUNDLE_STAGE"¨
 
       - name: Build DMG with create-dmg
         run: |
