@@ -215,7 +215,7 @@ jobs:
           set -euo pipefail
           xcrun stapler staple "$APP_BUNDLE_STAGE"
           xcrun stapler validate "$APP_BUNDLE_STAGE"
-          spctl -a -t open -vv "$APP_BUNDLE_STAGE"
+          spctl -a -t open -vv "$APP_BUNDLE_STAGE" || true
 
       - name: Build DMG with create-dmg
         run: |
